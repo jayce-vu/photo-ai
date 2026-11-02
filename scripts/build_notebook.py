@@ -32,6 +32,7 @@ SIGMA = 10 / 255       # approximate DRUNet noise level; ~15-25/255 for ISO 3200
 SINGLE_FILE = ''       # e.g. 'DSC01234.ARW' to process just one file; '' = batch
 MAX_FILES = 3          # explicit batch limit per session (free Colab time is limited)
 SKIP_EXISTING = True
+UPLOAD_FROM_DEVICE = False  # True = pick RAW files from this phone/computer; saved to Drive input/
 ALLOW_CPU = False      # True = continue without GPU (very slow)
 RUN_TESTS = True       # fast CPU unit tests after install
 ''')
@@ -143,6 +144,31 @@ WORK = Path('/content/work')
 WORK.mkdir(parents=True, exist_ok=True)
 
 from sonyrawai.pipeline import find_inputs
+from sonyrawai.raw_io import RAW_SUFFIXES
+
+if UPLOAD_FROM_DEVICE:
+    # Photos only (never source code). Large files go through the browser: on mobile data or
+    # weak Wi-Fi, uploading via the Google Drive app is more reliable.
+    from google.colab import files
+    from sonyrawai.export import atomic_write_bytes
+    uploaded = files.upload()
+    for name, data in uploaded.items():
+        safe = Path(name).name
+        Path(name).unlink(missing_ok=True)  # files.upload also writes a copy to the working dir
+        if Path(safe).suffix.lower() not in RAW_SUFFIXES:
+            print(f'skip {safe}: not a RAW file ({", ".join(RAW_SUFFIXES)})')
+            continue
+        if len(data) < 1_000_000:
+            print(f'skip {safe}: only {len(data)} bytes, upload probably incomplete')
+            continue
+        target = INPUT / safe
+        if target.exists():
+            print(f'already in Drive input: {safe}')
+            continue
+        atomic_write_bytes(target, data)
+        print(f'uploaded {safe} ({len(data) / 1e6:.1f} MB) -> {target}')
+    del uploaded
+
 if SINGLE_FILE:
     if Path(SINGLE_FILE).name != SINGLE_FILE:
         raise ValueError('SINGLE_FILE must be a file name inside the input folder')

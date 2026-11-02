@@ -33,7 +33,9 @@ ARW (read-only) ─► LibRaw/rawpy demosaic + camera WB (16-bit, linear)
      dựng TIFF trong `/content/work` rồi copy nguyên tử (atomic) sang `output/`;
    * ghi JSON cho từng ảnh + `reports/summary-*.csv/json` (file lỗi, peak VRAM), hiển thị preview và crop 100%.
 
-**Không** cần upload ZIP mã nguồn. Chỉ đặt file `.ARW` vào `MyDrive/SonyRAWAI/input/`.
+**Không** cần upload ZIP mã nguồn. Chỉ đặt file `.ARW` vào `MyDrive/SonyRAWAI/input/` — qua app Google Drive,
+hoặc đặt `UPLOAD_FROM_DEVICE = True` ở cell đầu để chọn ảnh RAW từ điện thoại/máy tính ngay trong notebook
+(ảnh được lưu vào `input/` trên Drive; mạng yếu thì app Drive ổn định hơn).
 
 **Repo private:** tạo fine-grained token chỉ đọc, lưu trong *Colab Secrets* (`GH_TOKEN`), đọc bằng
 `google.colab.userdata.get` lúc chạy và truyền qua credential helper — không dán token vào notebook/URL, không in ra.

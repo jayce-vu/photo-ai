@@ -54,7 +54,9 @@ def test_github_clone_and_editable_install(nb):
 def test_no_zip_upload_workflow(nb):
     text = _all(nb).lower()
     assert "zipfile" not in text and "extractall" not in text and ".zip" not in text
-    assert "files.upload" not in text
+    # Uploading *photos* is allowed, but only RAW files, saved into the Drive input folder.
+    if "files.upload" in text:
+        assert "raw_suffixes" in text and "upload_from_device" in text
 
 
 def test_no_embedded_secrets(nb):
