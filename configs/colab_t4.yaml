@@ -1,0 +1,39 @@
+# Google Colab, NVIDIA T4 (16 GB). strength = user blend intensity, NOT a quality score.
+strength: 0.70
+device: cuda            # fail clearly if no GPU; set allow_cpu_fallback: true to opt into CPU
+allow_cpu_fallback: false
+raw:
+  use_camera_wb: true
+  highlight_mode: clip  # clip | ignore | blend | reconstruct (estimates; nothing truly recovered)
+  demosaic: AHD
+denoise:
+  backend: drunet       # pretrained DPIR DRUNet colour, SHA256-verified
+  sigma: 0.0392156863   # 10/255, approximate; raise to ~15-25/255 for ISO 3200-6400
+  tile: 256             # multiple of 8; ~1 GB VRAM peak expected at 256
+  overlap: 48
+  max_delta: 0.12       # bound on per-pixel change (sRGB-encoded units)
+tone:
+  enabled: true
+  amount: 1.0           # x strength
+  shadow_lift: 0.30
+  highlight_compress: 0.17
+  radius: 24.0
+detail:
+  enabled: true
+  amount: 0.65          # x strength
+  radius: 1.0
+  threshold: 0.008
+  max_change: 0.04
+  halo_margin: 0.004
+skin:
+  enabled: true         # set false for wildlife / landscapes
+  mode: multiclass      # MediaPipe selfie multiclass (face/body skin) gated by chroma
+  amount: 0.5           # x strength
+  max_delta: 0.02
+  min_area_fraction: 0.002
+models:
+  cache_dir: /content/drive/MyDrive/SonyRAWAI/models
+export:
+  jpeg_preview: true
+  preview_max_side: 2048
+  embed_icc: true

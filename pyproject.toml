@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonyrawai"
+version = "0.3.0"
+description = "Conservative full-resolution Sony ARW -> 16-bit TIFF pipeline with verified pretrained DRUNet denoising"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Lower bounds only (plus NumPy major cap) so Colab's preinstalled NumPy/OpenCV/Torch are
+# reused instead of being force-downgraded.
+dependencies = [
+  "numpy>=1.24,<3",
+  "opencv-python-headless>=4.8",
+  "tifffile>=2023.7",
+  "imagecodecs>=2023.1",
+  "Pillow>=10",
+  "PyYAML>=6",
+  "rawpy>=0.19",
+]
+
+[project.optional-dependencies]
+# torch is preinstalled on Colab with matching CUDA; the lower bound only guarantees
+# torch.load(weights_only=True) and torch.inference_mode().
+ai = ["torch>=2.1"]
+# MediaPipe Tasks ImageSegmenter (selfie_multiclass). 0.10.21 and older pin numpy<2 and
+# would downgrade Colab's NumPy, so they are excluded.
+skin = ["mediapipe>=0.10.30"]
+colab = ["torch>=2.1", "mediapipe>=0.10.30"]
+test = ["pytest>=7", "ruff>=0.5"]
+
+[project.scripts]
+sonyrawai = "sonyrawai.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "gpu: requires CUDA and a verified DRUNet checkpoint (SONYRAWAI_CHECKPOINT)",
+  "integration: requires a real user-supplied ARW (SONYRAWAI_TEST_ARW)",
+]
+addopts = "-ra"
+pythonpath = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["colab"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "S"]
+ignore = ["S101", "S603", "S607"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B"]
+"scripts/build_notebook.py" = ["E501"]

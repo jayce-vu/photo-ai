@@ -1,0 +1,16 @@
+# Local CPU run without a GPU. DRUNet on CPU works but is slow (minutes per 24 MP image).
+# Use denoise.backend: bilateral for a fast classical (non-AI) denoise instead.
+strength: 0.70
+device: cpu
+allow_cpu_fallback: true
+denoise:
+  backend: drunet
+  sigma: 0.0392156863
+  tile: 256
+  overlap: 32
+skin:
+  enabled: false        # enable after installing the [skin] extra
+models:
+  cache_dir: ~/.cache/sonyrawai/models
+export:
+  jpeg_preview: true
