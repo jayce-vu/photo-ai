@@ -45,7 +45,7 @@ def test_first_cell_is_configuration(nb):
 
 def test_github_clone_and_editable_install(nb):
     text = "\n".join(_code(nb))
-    assert '"git", "clone"' in text or "'git', 'clone'" in text
+    assert "git('clone'" in text or "'git', 'clone'" in text
     assert "rev-parse" in text and "checkout" in text
     assert re.search(r"pip.*install.*-e", text)
     assert "subprocess.run(" in text and "shell=True" not in text
