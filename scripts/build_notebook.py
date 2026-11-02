@@ -33,6 +33,9 @@ SINGLE_FILE = ''       # e.g. 'DSC01234.ARW' to process just one file; '' = batc
 MAX_FILES = 3          # explicit batch limit per session (free Colab time is limited)
 SKIP_EXISTING = True
 UPLOAD_FROM_DEVICE = False  # True = pick RAW files from this phone/computer; saved to Drive input/
+# RAW files uploaded with the Upload button of Colab's Files panel land in /content (lost when the
+# session ends); they are copied into the Drive input folder automatically.
+IMPORT_COLAB_UPLOADS = True
 ALLOW_CPU = False      # True = continue without GPU (very slow)
 RUN_TESTS = True       # fast CPU unit tests after install
 ''')
@@ -69,21 +72,30 @@ if not REPO_REF_RE.match(REPO_REF) or '..' in REPO_REF:
 REPO_DIR = Path('/content/sony-raw-ai')
 
 def git(*args, cwd=REPO_DIR):
-    return subprocess.run(['git', *args], cwd=str(cwd), check=True, capture_output=True, text=True).stdout.strip()
+    r = subprocess.run(['git', *args], cwd=str(cwd), capture_output=True, text=True,
+                       env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
+    if r.returncode != 0:  # Colab does not show a subprocess's stderr, so surface it here
+        hint = ''
+        if 'Authentication failed' in r.stderr or 'could not read Username' in r.stderr:
+            hint = '\nHint: the repository is private. Make it public, or see the private-repo note above.'
+        raise RuntimeError(f"git {' '.join(args)} failed ({r.returncode}):\n{r.stderr.strip()}{hint}")
+    return r.stdout.strip()
 
 if (REPO_DIR / '.git').exists():
     if git('remote', 'get-url', 'origin') != REPO_URL:
         raise RuntimeError(f'{REPO_DIR} is a clone of another repo; delete it or change REPO_URL')
     git('fetch', '--tags', '--prune', 'origin')
 else:
-    subprocess.run(['git', 'clone', '--', REPO_URL, str(REPO_DIR)], check=True)
+    if REPO_DIR.exists():
+        raise RuntimeError(f'{REPO_DIR} exists but is not a git clone; delete it and re-run this cell')
+    git('clone', '--', REPO_URL, str(REPO_DIR), cwd='/content')
 
 resolved = None
 for candidate in (f'origin/{REPO_REF}', REPO_REF):
     try:
         resolved = git('rev-parse', '--verify', '--end-of-options', candidate + '^{commit}')
         break
-    except subprocess.CalledProcessError:
+    except RuntimeError:
         pass
 if resolved is None:
     raise ValueError(f'REPO_REF {REPO_REF!r} is not a branch, tag or commit in {REPO_URL}')
@@ -169,6 +181,18 @@ if UPLOAD_FROM_DEVICE:
         print(f'uploaded {safe} ({len(data) / 1e6:.1f} MB) -> {target}')
     del uploaded
 
+if IMPORT_COLAB_UPLOADS:
+    from sonyrawai.export import atomic_copy
+    for f in sorted(Path('/content').iterdir()):
+        if not f.is_file() or f.suffix.lower() not in RAW_SUFFIXES:
+            continue
+        target = INPUT / f.name
+        if target.exists():
+            print(f'already in Drive input: {f.name}')
+            continue
+        atomic_copy(f, target)
+        print(f'copied Colab upload {f.name} ({f.stat().st_size / 1e6:.1f} MB) -> {target}')
+
 if SINGLE_FILE:
     if Path(SINGLE_FILE).name != SINGLE_FILE:
         raise ValueError('SINGLE_FILE must be a file name inside the input folder')
@@ -178,7 +202,11 @@ if SINGLE_FILE:
 else:
     files = find_inputs(INPUT, INPUT_GLOB)
 if not files:
-    raise FileNotFoundError(f'Put .ARW files in {INPUT} (Google Drive: MyDrive/SonyRAWAI/input)')
+    seen = sorted(p.name for p in INPUT.iterdir())[:20]
+    raise FileNotFoundError(
+        f'No files matching {INPUT_GLOB!r} in {INPUT}. Put RAW files there with the Google Drive app, '
+        f'set UPLOAD_FROM_DEVICE = True (then re-run cell 0), or use the Upload button in the Files panel. '
+        f'Files currently in input/: {seen}')
 print(f'{len(files)} input file(s) found; up to MAX_FILES={MAX_FILES} not-yet-processed file(s) run per session')
 ''')
 
