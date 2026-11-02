@@ -153,8 +153,7 @@ else:
     files = find_inputs(INPUT, INPUT_GLOB)
 if not files:
     raise FileNotFoundError(f'Put .ARW files in {INPUT} (Google Drive: MyDrive/SonyRAWAI/input)')
-files = files[:MAX_FILES]
-print(f'{len(files)} file(s) selected (MAX_FILES={MAX_FILES}):', *[f.name for f in files], sep='\n  ')
+print(f'{len(files)} input file(s) found; up to MAX_FILES={MAX_FILES} not-yet-processed file(s) run per session')
 ''')
 
 code(r'''
@@ -185,8 +184,9 @@ import json, time
 from sonyrawai.pipeline import run_batch
 t0 = time.time()
 summary = run_batch(pipe, files, OUTPUT, skip_existing=SKIP_EXISTING, continue_on_error=True,
-                    work_dir=WORK, report_dir=REPORTS)
-print(f"ok={summary['ok']} skipped={summary['skipped']} failed={len(summary['failed'])} "
+                    max_files=MAX_FILES, work_dir=WORK, report_dir=REPORTS)
+print(f"ok={summary['ok']} skipped={summary['skipped']} deferred={summary['deferred']} "
+      f"failed={len(summary['failed'])} "
       f"time={time.time() - t0:.1f}s gpu_peak_mb={summary['gpu_peak_mb']}")
 for row in summary['rows']:
     print(f"  {row['status']:8s} {Path(row['source']).name}  {row.get('seconds', '')}s  {row.get('error', '')}")

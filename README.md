@@ -43,7 +43,7 @@ ARW (read-only) ─► LibRaw/rawpy demosaic + camera WB (16-bit, linear)
 ```bash
 git clone https://github.com/jayce-vu/photo-ai.git sony-raw-ai && cd sony-raw-ai
 python -m venv .venv && . .venv/bin/activate
-pip install -e '.[ai,test]'          # + '.[skin]' for MediaPipe skin segmentation
+pip install -e '.[local,ai,test]'    # + '.[skin]' for MediaPipe (it brings its own OpenCV; then drop 'local')
 sonyrawai doctor
 sonyrawai models download --config configs/local_cpu.yaml
 pytest -q

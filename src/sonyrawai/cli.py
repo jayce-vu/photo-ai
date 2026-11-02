@@ -15,6 +15,7 @@ import argparse
 import dataclasses
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -94,8 +95,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _apply_overrides(cfg, args):
-    from .config import ConfigError
-
     c = cfg
     if getattr(args, "strength", None) is not None:
         c = dataclasses.replace(c, strength=args.strength)
@@ -121,12 +120,7 @@ def _apply_overrides(cfg, args):
         c = dataclasses.replace(c, export=dataclasses.replace(c.export, jpeg_preview=False))
     if getattr(args, "model_cache", None):
         c = dataclasses.replace(c, models=dataclasses.replace(c.models, cache_dir=str(args.model_cache)))
-    try:
-        c.validate()
-    except ConfigError:
-        raise
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
+    c.validate()  # raises ConfigError
     return c
 
 
@@ -194,12 +188,27 @@ def _models(args) -> int:
     return EXIT_OK
 
 
+def _rewrite_legacy(argv: list[str]) -> list[str]:
+    """Map the v0.2 form ``sonyrawai [global opts] INPUT -o OUTPUT ...`` to ``process``."""
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--log-format":
+            i += 2
+            continue
+        if tok.startswith("--log-format=") or re.fullmatch(r"-v+|--verbose", tok):
+            i += 1
+            continue
+        if tok.startswith("-") or tok in SUBCOMMANDS:
+            return argv
+        print("warning: legacy invocation; use 'sonyrawai process INPUT -o OUTPUT'", file=sys.stderr)
+        return [*argv[:i], "process", *argv[i:]]
+    return argv
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    # Legacy v0.2: sonyrawai INPUT -o OUTPUT
-    if argv and argv[0] not in SUBCOMMANDS and not argv[0].startswith("-"):
-        print("warning: legacy invocation; use 'sonyrawai process INPUT -o OUTPUT'", file=sys.stderr)
-        argv = ["process", *argv]
+    argv = _rewrite_legacy(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
     _setup_logging(args.log_format, args.verbose)
@@ -250,7 +259,8 @@ def main(argv: list[str] | None = None) -> int:
         summary = run_batch(pipe, inputs, args.output_dir, skip_existing=not args.no_skip_existing,
                             continue_on_error=args.continue_on_error, max_files=args.max_files,
                             work_dir=args.work_dir, report_dir=args.report_dir)
-        print(json.dumps({k: summary[k] for k in ("total", "ok", "skipped", "failed", "gpu_peak_mb")}, default=str))
+        keys = ("total", "ok", "skipped", "deferred", "failed", "gpu_peak_mb")
+        print(json.dumps({k: summary[k] for k in keys}, default=str))
         return EXIT_FAIL if summary["failed"] else EXIT_OK
     except ConfigError as exc:
         log.error("config error: %s", exc)

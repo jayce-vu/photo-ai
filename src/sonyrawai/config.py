@@ -57,12 +57,13 @@ class PipelineConfig:
         if self.export.preview_max_side < 64:
             raise ConfigError("export.preview_max_side must be >= 64")
         try:
+            from .models import DRUNET_SPATIAL_MULTIPLE
             from .tiling import validate_tiling
 
             self.raw.validate()
             self.denoise.validate()
             validate_tiling(self.denoise.tile, self.denoise.overlap,
-                            8 if self.denoise.backend == "drunet" else 1)
+                            DRUNET_SPATIAL_MULTIPLE if self.denoise.backend == "drunet" else 1)
             self.tone.validate()
             self.detail.validate()
             self.skin.validate()

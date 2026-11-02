@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import csv
 import dataclasses
-import hashlib
 import logging
 import os
 import platform
@@ -40,6 +39,7 @@ from .export import (
     write_jpeg_preview,
     write_tiff16,
 )
+from .models import sha256_file
 from .quality import summarize
 from .raw_io import load_image
 from .skin import compute_skin_mask, retouch_skin
@@ -95,12 +95,9 @@ def git_commit(start: Path | None = None) -> str | None:
         return None
 
 
-def sha256_path(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        while b := f.read(1 << 20):
-            h.update(b)
-    return h.hexdigest()
+def _stat_key(path: Path) -> tuple[int, int]:
+    st = Path(path).stat()
+    return st.st_size, st.st_mtime_ns
 
 
 def gpu_info() -> dict[str, Any]:
@@ -219,30 +216,36 @@ class Pipeline:
         if dest.resolve() == source.resolve():
             raise ValueError("output path must differ from input path")
         t0 = time.perf_counter()
-        src_hash = sha256_path(source)
+        src_hash = sha256_file(source)
+        src_stat = _stat_key(source)
         self._reset_peak()
         decoded = load_image(source, self.config.raw)
         t_dec = time.perf_counter() - t0
         result, info = self.process_array(decoded.linear)
         rgb16 = quantize_uint16(result)
-        local = (Path(work_dir) / dest.name) if work_dir else dest
+        staged = work_dir is not None and (Path(work_dir) / dest.name).resolve() != dest.resolve()
+        local = (Path(work_dir) / dest.name) if staged else dest
+        local_preview = local.with_suffix(".preview.jpg")
         t = time.perf_counter()
-        tiff_info = write_tiff16(local, rgb16, embed_icc=self.config.export.embed_icc)
         preview = None
-        if self.config.export.jpeg_preview:
-            preview = write_jpeg_preview(local.with_suffix(".preview.jpg"), rgb16,
-                                         self.config.export.preview_max_side)
-        if work_dir:
-            atomic_copy(local, dest)
-            tiff_info = validate_tiff(dest, rgb16.shape, expected_digest=tiff_info["pixel_sha256"])
-            if preview:
-                atomic_copy(Path(preview), dest.with_suffix(".preview.jpg"))
-                preview = str(dest.with_suffix(".preview.jpg"))
-                Path(local.with_suffix(".preview.jpg")).unlink(missing_ok=True)
-            local.unlink(missing_ok=True)
+        try:
+            tiff_info = write_tiff16(local, rgb16, embed_icc=self.config.export.embed_icc)
+            if self.config.export.jpeg_preview:
+                preview = write_jpeg_preview(local_preview, rgb16, self.config.export.preview_max_side)
+            if staged:
+                atomic_copy(local, dest)
+                tiff_info = {**tiff_info, **validate_tiff(dest, rgb16.shape,
+                                                          expected_digest=tiff_info["pixel_sha256"])}
+                if preview:
+                    atomic_copy(local_preview, dest.with_suffix(".preview.jpg"))
+                    preview = str(dest.with_suffix(".preview.jpg"))
+        finally:
+            if staged:  # never leave large staging files behind, on success or failure
+                local.unlink(missing_ok=True)
+                local_preview.unlink(missing_ok=True)
         info["timings"]["export_s"] = time.perf_counter() - t
         info["timings"]["decode_s"] = t_dec
-        if sha256_path(source) != src_hash:
+        if _stat_key(source) != src_stat:
             raise RuntimeError(f"source file changed during processing: {source}")
         meta = {
             "sonyrawai_version": __version__,
@@ -304,19 +307,31 @@ def run_batch(pipeline: Pipeline, inputs: list[Path], output_dir: Path, *, skip_
               report_dir: Path | None = None) -> dict[str, Any]:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    if max_files is not None:
-        if max_files < 1:
-            raise ValueError("max_files must be >= 1")
-        inputs = inputs[:max_files]
+    if max_files is not None and max_files < 1:
+        raise ValueError("max_files must be >= 1")
     rows: list[dict[str, Any]] = []
+    seen: dict[str, Path] = {}
+    attempted = 0
+    deferred = 0
     for src in inputs:
         dest = output_dir / output_name(src)
         row: dict[str, Any] = {"source": str(src), "output": str(dest)}
+        key = dest.name.lower()  # Drive / macOS / Windows are case-insensitive
+        if key in seen:
+            row.update(status="failed", error=f"output name collision with {seen[key]}; rename one input")
+            log.error("collision: %s and %s both map to %s", seen[key], src, dest.name)
+            rows.append(row)
+            continue
+        seen[key] = src
         if skip_existing and dest.exists() and sidecar_path(dest).exists():
             row["status"] = "skipped"
             rows.append(row)
             log.info("skip existing %s", dest.name)
             continue
+        if max_files is not None and attempted >= max_files:
+            deferred += 1  # left for a later session; skipped files do not count toward max_files
+            continue
+        attempted += 1
         t = time.perf_counter()
         try:
             meta = pipeline.process_file(src, dest, work_dir=work_dir)
@@ -337,6 +352,7 @@ def run_batch(pipeline: Pipeline, inputs: list[Path], output_dir: Path, *, skip_
         "total": len(rows),
         "ok": sum(r["status"] == "ok" for r in rows),
         "skipped": sum(r["status"] == "skipped" for r in rows),
+        "deferred": deferred,
         "failed": [r for r in rows if r["status"] == "failed"],
         "gpu_peak_mb": max([r.get("gpu_peak_mb") or 0 for r in rows], default=0) or None,
         "repo_commit": git_commit(),

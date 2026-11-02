@@ -29,4 +29,7 @@
   (no DPIR repo path), `sonyrawai.pipeline.Pipeline`.
 * `sonyrawai.pipeline.Settings/process/export` replaced by `PipelineConfig` + `Pipeline.process_array/process_file`.
 * `configs/default.json` replaced by YAML configs.
+* OpenCV is no longer a core dependency (avoids clobbering Colab's `opencv-python` / MediaPipe's
+  `opencv-contrib-python`); local installs add the `[local]` extra.
+* `max_files` / notebook `MAX_FILES` now count files actually processed per run, so resumed batches progress.
 * Default output naming in batch: `<stem>_sonyrawai.tif` (+ `.json`, `.preview.jpg`).

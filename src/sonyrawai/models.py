@@ -105,7 +105,7 @@ def verify_checkpoint(path: Path, spec: ModelSpec) -> str:
     if not path.is_file():
         raise ModelVerificationError(f"checkpoint not found: {path}")
     size = path.stat().st_size
-    if size < min(spec.size_bytes, 100_000) or size != spec.size_bytes:
+    if size != spec.size_bytes:
         raise ModelVerificationError(
             f"{path} has {size} bytes, expected {spec.size_bytes} (truncated download or HTML page?)")
     with open(path, "rb") as f:
@@ -143,8 +143,7 @@ def download_checkpoint(spec: ModelSpec, cache_dir: Path, url: str | None = None
     try:
         with open_url(url, timeout=timeout) as resp:  # noqa: S310 - scheme/host validated above
             final_url = resp.geturl() if hasattr(resp, "geturl") else url
-            if urllib.parse.urlparse(final_url).scheme != "https":
-                raise ModelVerificationError(f"redirected to non-https URL {final_url}")
+            validate_download_url(final_url)  # redirects must stay https + allow-listed
             ctype = (resp.headers.get("Content-Type", "") if hasattr(resp, "headers") else "").lower()
             if "text/html" in ctype:
                 raise ModelVerificationError(f"{url} returned HTML ({ctype}), not a checkpoint")

@@ -28,9 +28,13 @@ def main() -> int:
     if missing:
         print(f"ERROR: missing packages {missing}", file=sys.stderr)
         return 5
-    if not info["packages"].get("opencv-python-headless") and not info["packages"].get("opencv-python") \
-            and not info["packages"].get("opencv-contrib-python"):
-        print("ERROR: OpenCV missing", file=sys.stderr)
+    try:
+        import cv2
+
+        print("OpenCV", cv2.__version__)
+    except Exception as exc:  # missing, or several OpenCV wheels overwriting each other's cv2
+        print(f"ERROR: OpenCV (cv2) not importable: {exc}. Install exactly one OpenCV wheel "
+              "(e.g. pip install -e '.[local]' outside Colab).", file=sys.stderr)
         return 5
     gpu = info["gpu"]
     if args.require_cuda and not gpu.get("cuda"):
